@@ -1,0 +1,233 @@
+---
+title: "Modeling methods for regression"
+author: "Paul Esker and Felipe Dalla Lana"
+output:
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    fontsize: 11pt
+    geometry: margin=1in
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE)
+```
+
+## Background
+
+When building a model, there are different methods we can take to construct it, ranging from manual to automated. There are strengths and weaknesses in using the different methods, but they provide a good background for those interested in taking their models to a higher level (machine level, etc.), since in those situations we are often interested to look for interactions that cannot easily be found with basic approaches. 
+
+The general idea in this example is that we are interested in examining the behaviour of the a dependent variable $Y$ as a function of different (possible) explanatory variables, $X_i$. The question that we are asking by looking at the different models is, "Is there a best approach to examing the different relationships?"
+
+We will examine different approaches in this exercise and be prepared that the final model may not be the same (we will see a different example after that provides a "cleaner" model, if you will).
+
+```{r packages}
+
+library(tidyverse)
+library(Hmisc)
+library(corrplot)
+library(readr)
+library(HH)
+library(car)
+library(scatterplot3d)
+library(leaps)
+library(olsrr)
+  
+```
+
+## Data
+
+For this exercise, we will examine the relationshiop between the number of aphids in 34 lots as a function of temperature and relative humidity.
+
+```{r datos}
+
+lot <- c(1:34)
+aphids <- c(61, 77, 87, 93, 98, 100, 104, 118, 102, 74, 63, 43, 27, 19, 14, 23, 30, 25, 67, 40, 6, 21, 18, 23, 42, 56, 60, 59, 82, 89, 77, 102, 108, 97)
+temperature <- c(21, 24.8, 28.3, 26, 27.5, 27.1, 26.8, 29, 28.3, 34, 30.5, 28.3, 30.8, 31, 33.6, 31.8, 31.3, 33.5, 33, 34.5, 34.3, 34.3, 33, 26.5, 32, 27.3, 27.8, 25.8, 25, 18.5, 26, 19, 18, 16.3)
+humidity <- c(57,48, 41.5, 56, 58, 31, 36.5, 41, 40, 25, 34, 13, 37, 19, 20, 17, 21, 18.5, 24.5, 16, 6, 26, 21, 26, 28, 24.5, 39, 29, 41, 53.5, 51, 48, 70, 79.5)
+
+aphids_data <- data.frame(lot, aphids, temperature, humidity)
+
+```
+
+## Basic model
+
+Our basic model is additive, meaning we expect there to be an effect of temperature and relative humidity:
+
+$$aphids = intercept + temperature + humidity + error$$
+
+Our model structure will start by assuming that both temperature and humidity explain "something" about the relationship. For completeness, one could start with each factor separately and examine the explanatory value and then build the subsequent model accordingly. In many situations, what we are most interested in understanding is if there are interactions that explain better the relationships, especially if it is not clear that a linear set of assumptions is appropriate. We will build on those ideas in subsequent steps. 
+
+```{r baseline}
+
+model_a <- with(aphids_data, lm(aphids ~ temperature + humidity))
+anova(model_a) # both factors are significant
+summary(model_a) #R^2 = 0.55
+
+
+plot(model_a)
+plot(model_a, which=4) 
+
+```
+
+## Full model
+
+The second model we will build takes into account what we define to be the full model. In some situations, this may just be all factors and all interactions. Here, given the two potential explanatory factors and the idea that there may not be purely a linear relationship, we will build our full model based on the individual factors, the interaction between those factors, as well as a quadratic form for the model for each factor. 
+
+Model B: $aphids = intercept + temperature + humidity + temperature^2 + humidity^2 + temperature:humidity$
+
+We will use an indicator function to define the quadratic model forms ($I$) in the subsequent model.
+
+```{r full}
+
+model_b <- with(aphids_data, lm(aphids ~ temperature + humidity + I(temperature^2) + 
+                                  I(humidity^2) + temperature:humidity))
+anova(model_b) # significant factors: temperature, humidity, I(temperature^2)
+summary(model_b) #R^2 = 0.63, adjusted R^2 = 0.5617
+
+plot(model_b)
+plot(model_b, which=4)
+
+```
+
+## Model comparison
+
+```{r comparison}
+
+# anova(a,b), enables comparision between nested models, based on the number of additional parameters
+
+anova(model_a, model_b) 
+
+# What the results indicates is that a full model does not explain better the relationship, probably due to being an over-adjusted model. This does not mean that they may not be a model that better explains the relationship that is less complicated. 
+```
+
+## Modeling: three methods under consideration
+
+Now, we will look at different methods to try to automate the model development. The general idea with this approach/exercise is to reduce the need to create many models and duplicate the same process over and over. The challenge will be to identify the most important factors, not just statistically, but also based on the biology and knowledge of the system. 
+
+The three methods we will consider: 
+* Manual
+* Stepwise methods ("steps")
+* Best subset methods
+
+
+```{r modeling1}
+
+# Manual model construction
+# We will start with Model B in this situation and try to reduce the complexity of the model. 
+
+# The process involves elminating factors that are not significant followed by an examination of the new model fit.
+
+# We assume that we will work from interactions towards the simple, single factor models.
+
+# Initial step: eliminate the factor, temperature:humidity
+model_b2 <- update(model_b, .~.-temperature:humidity)
+summary(model_b2)
+anova(model_b, model_b2) ## temperature:humidity = non-significant
+
+# From model b2, we will now eliminate the factor I(humidity^2)
+model_b3 <- update(model_b2, .~.-I(humidity^2))
+summary(model_b3) # it appears that all factors explain something
+
+# Compare the models b2 and b3
+anova(model_b2, model_b3) # I(humidity^2) = not signficant 
+# Compare with baseline model
+anova(model_a, model_b3) ## this model is close to p=0,05 and probably has 
+# some predictive value
+
+# From model b2 (no interaction), we will now remove temperature to 
+# look at the humidity^2 term
+model_b3t <- update(model_b2, .~.-I(temperature^2))
+summary(model_b3t) # it appears that all factors explain something
+anova(model_a, model_b3t)
+anova(model_b2, model_b3t)
+
+# From model b3, remove temperature^2 (can do the same with model_b3t)
+model_b4 <- update(model_b3, .~.-I(temperature^2))
+anova(model_b4)
+summary(model_b4)
+anova(model_b3, model_b4) 
+
+# You can continue reducing the model, but we do know now that there is some predictive value with the variables we have 
+
+```
+
+## Stepwise methods
+
+Now, let's use the function *step()* to automate the search process for the best model.
+
+What is required typically is the definition of the null model and the full model. With these defined, we can use "forward", "backward", or "both" direction searching.
+
+```{r stepwise}
+
+## Stepwise methods
+
+# Null model
+model_null <- lm(aphids~1, data=aphids_data)
+model_full <- model_b
+
+# Forward
+forward <- step(model_null, scope=list(lower=model_null, upper=model_full, 
+                                       direction="forward")) 
+
+# Backwards
+back <- step(model_null, scope=list(lower=model_null, upper=model_full, 
+                                    direction="backward"))  
+
+# Both directions 
+back <- step(model_null, scope=list(lower=model_null, upper=model_full, 
+                                    direction="both"))
+
+```
+
+## Return to manual model
+
+For the moment, let's return to our manual model to take a look at suggest model from the stepwise procedure.
+
+```{r humiditymodel}
+
+model_b5<-with(aphids_data, lm(aphids~humidity+I(humidity^2)))
+anova(model_b5)
+summary(model_b5)
+
+```
+
+## Best subsets
+
+In the last section of this exercise, we will use a method based on best subsets regression. We will use the funtion *regsubsets* in the package *leaps* to do this exercise. This method looks at the full model and considers different combinations of models based on the number of best models we decide to examine. The result is not necessarily what is the best model but rather a series of models that explain something in our model. We would then need to go back, after model selection, and run the formal analysis to look at model fit, predictive value, biological relevance, etc..
+
+```{r bestsubsets}
+
+# regsubsets = package *leaps*
+
+# let's start by looking at the best 3 models per level
+subsets <- regsubsets(aphids~temperature+humidity+I(temperature^2)+
+I(humidity^2)+temperature:humidity, nbest=3, data=aphids_data)
+
+plot(subsets, scale="adjr2")
+plot(subsets, scale="bic")
+plot(subsets, scale="Cp")
+
+```
+
+## Summary
+
+Hopefully you saw that this was not an easy exercise since there was not a clear model that best fit the response. In modeling we are integrating mathematical/statistical concepts with computational methodology, as well as keeping in mind the biology/pathology.
+
+*What is the best method to model observaed relationships?*
+
+For this concluding part, I draw and adapt on ideas from Gelman and Hall (2007; *Data Analysis Using Regression and Multilevel/Hierarchical Models*):
+
+1. Include all variables that for reasons known to the researcher may be important for predicting an outcome.
+2. You do not always have to include all inputs as separate predictors. You can consider in some situations that several inputs could be averaged or summed to create a "total score" that then becomes the predictor variable (index value, etc.)
+3. For predictive variables with large effects, an examination of the interactions may also be warranted (very common when we extend this to regression trees and other methods).
+4. Strategy for decisions focused on excluding a variable based on the expected sign and statistical significance:
+* If the predictor is not statistically significant and has the expected sign (+ or -), in general it is fine to keep the predictor. This means that while the predictor is not helping predictions dramatically, it is also not hurting them.
+* If the predictor is not statistically significant and does not have the expected sign, consider removing this from the model (i.e., the coefficiente is set to 0). 
+* If the predictor is statistically significant but does not have the expected sign, this is somewhat more complicated since the challenge is in terms of interpretation. Consider trying to gather additional data on lurking variables and include those in the analysis.
+* If the predictor is statistically significant and has the expected sign, definitely you should keep this in the model!
+

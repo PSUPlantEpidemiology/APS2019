@@ -1,0 +1,228 @@
+---
+title: "Regression 1"
+author: "Paul Esker and Felipe Dalla Lana"
+output:
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    fontsize: 12pt
+    geometry: margin=1in
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width=6, fig.height=4, message=FALSE)
+options(width=999)
+```
+
+## Background
+
+This example is focued on modeling via linear regression. We will illustrate the concepts using an example, with particular focus on the assumptions and the tools that exist in R to explore the model fit.
+
+Our goal is to related a "dependent variable" with an "independent variable" the explains something about the process. 
+
+Our simple example is that we might relate plant height with an index of crop growth (leaf area index). This would provide a simple base for considering in the future the impact of some pest on growth and development.
+
+Our basic model form is: $$Y = f(X) + e$$
+
+Where:
+
+* Y = dependent variable,
+* f(X) = a mathematical function that describes the relationship of the dependenct variable as a function of the independent variable,
+* e = error, the proper form for a model depends on the type of assumptions; in our simple example, we assume that the error is distributed normally with an expected value of 0 and variance equal to sigma.
+
+For this first example, we are creating a more complete analysis where we will explore some of the tools that help with understanding the model assumptions and also how to use the prediction function, which is important for using the model to estimate new values, as well as information about the variability. 
+
+```{r, packages}
+
+library(tidyverse)
+library(Hmisc)
+library(corrplot)
+library(readr)
+library(HH)
+library(car)
+library(tinytex)
+
+```
+
+## Data
+
+In the majority of our examples, we will use a manual data input approach, to minimize some of the confusion that occurs when trying to import data. R and RStudio are very flexible in this regards. 
+
+The data we are using for this first example comes from peanut, where we have two measures:
+1. The percentage of clean grain,
+2. The concentration of alfatoxin in *ppb* (ug per kg). 
+
+We describe the variables as follows:
+
+* clean = % of clean grain  
+* alfatoxin = alfatoxin concentration
+
+
+```{r data}
+
+clean <- c(99.97, 99.94, 99.86, 99.98, 99.93, 99.81, 99.98, 99.91, 99.88, 99.97, 99.97, 99.8, 99.96, 99.99, 99.86, 99.96, 99.93, 99.79, 99.96, 99.86, 99.82, 99.97, 99.99, 99.83, 99.89, 99.96, 99.72, 99.96, 99.91, 99.64, 99.98, 99.86, 99.66, 99.98)
+alfatoxin <- c(3, 18.8, 46.8, 4.7, 18.9, 46.8, 8.3, 21.7, 58.1, 9.3, 21.9, 62.3, 9.9, 22.8, 70.6, 11, 24.2, 71.1, 12.3, 25.8, 71.3, 12.5, 30.6, 83.2, 12.6, 36.2, 83.6, 15.9, 39.8, 99.5, 16.7, 44.3, 111.2, 18.8)
+
+peanut <- data.frame(clean, alfatoxin)
+head(peanut)
+
+```
+
+## Exploratory analysis
+
+```{r preliminary}
+
+mean(alfatoxin)
+sd(alfatoxin)
+sd(alfatoxin)/mean(alfatoxin)*100
+
+mean(clean)
+sd(clean)
+sd(clean)/mean(clean)*100
+
+cor(clean, alfatoxin)
+rcorr(clean, alfatoxin)
+
+```
+
+## Linear regression
+
+```{r regression}
+
+# Visualizing the relationship
+with(peanut, plot(x=clean, y=alfatoxin, xlim=c(99.5,100), ylim=c(0,120), pch=10)) 
+
+# We will use lm() = linear model, to run the regression
+
+linreg <- with(peanut, lm(alfatoxin~clean)) #Format, Y <- X
+anova(linreg) #ANOVA table to see how the model fit looks
+summary(linreg) #Another way to see results of the model, with a few more details. This is important as we extend on the modeling concept to understand more complex relationships. 
+
+```
+
+The results indicated that there is a "significant" relationship. In the next step, we are going to learn about some of the tools that we can use to extract more information about the results to look at hypothesis testing on the parameters (intercept, slope, etc.) 
+
+```{r tests}
+
+### Example: let's say that we are interested in comparing the slope to a known value of -220, which means that for every 1% change in the percentage of clean grain, the concentration of alfatoxin will be reduced by 220 ug per kg
+
+# First, we need to see and understand where the coefficients are located, especially the intercept and slope
+linreg$coef
+linreg$coef[1]
+linreg$coef[2]
+
+# Furthermore, where are the errors associated with each parameter
+coefs <- summary(linreg)
+names(coefs)
+coefs$coefficients
+
+# We can see this directly as follows: 
+coefs$coefficients[1,1]
+coefs$coefficients[1,2]
+coefs$coefficients[2,1]
+coefs$coefficients[2,2]
+
+# Now, we will define the test parameter value for the slope
+B1 <- -220
+
+# To realize the test, we need to define the parameter value and the appropriate error term 
+# abs = absolute value
+
+test_b1<-abs((coefs$coefficients[2,1]-B1)/coefs$coefficients[2,2])
+test_b1
+
+## Test statistic (two-tailed) with 32 degrees of freedom (error term) 
+2*pt(q=test_b1, df=32, lower.tail=FALSE) 
+
+```
+
+## Model assumptions
+
+```{r assumptions}
+
+## What does a simple call to plot provide?
+plot(linreg)
+
+## With Rmarkdown and the reporting tools, we may have interest in controlling the outputted graphics, which can be accomplished as follows:
+par(mfrow=c(1,1))
+plot(linreg, which=1)
+plot(linreg, which=2)
+plot(linreg, which=3)
+plot(linreg, which=4)
+plot(linreg, which=5)
+plot(linreg, which=6)
+
+```
+
+## Estimation and prediction
+
+Now that we have a model, we are normally interested in performing some type of prediction based on the model equation (form). In R, the function *predict()* is very important for many of the modeling tools we might like to apply. This versatile function allows us to perform estimation (within the confines of the model and data structure) and prediction (under uncertainty). What this predicts is the point estimate for a value (or estiamtes for multiple values) as well as the respective interval type (confidence or prediction). 
+
+```{r predictions}
+
+# One challenge with predict is the need to defien a data.frame, even if just for a single value, like the following example where the % clean grain is 99.68. 
+
+observation <- data.frame(clean=99.68)
+
+predict(object=linreg, newdata=observation, interval="confidence")
+predict(object=linreg, newdata=observation, interval="predict")
+
+# We can do the same for all values in the regression. 
+intervals<-predict(linreg, interval="confidence")
+intervals
+
+predictions<-predict(linreg, interval="predict")
+predictions
+
+# If we are interested in just some select values, it is easy to accomplish this going back to the original single value example:
+observations <- data.frame(clean=c(99.5, 99.6, 99.7, 99.8))
+predict(object=linreg, newdata=observations, interval="confidence")
+predict(object=linreg, newdata=observations, interval="predict")
+
+```
+
+## Additional material
+
+The package *HH* (Statistical analysis and data display, https://www.amazon.com/Statistical-Analysis-Data-Display-Intermediate/dp/1493921215) has various (interesting) functions that we can use to examine a regression model. In the next section, we will look at several of those.
+
+```{r HH}
+
+# Let's examine the regression graphically
+ci.plot(linreg)
+
+# Tools to study the assumptions
+
+# Method to look for outliers using a Bonferroni adjustment
+outlierTest(linreg) 
+# Quantile-quantile plot based on Student residuals
+qqPlot(linreg) 
+# Influence plot in which the size of the circle is proportion to Cook's distance
+influencePlot(linreg) 
+# Test of homoscedasticity 
+ncvTest(linreg)
+# Method to verify if there is dependency in the model, which means that a transformation may be appropriate to model the relationship
+spreadLevelPlot(linreg) 
+# Method to verify if there is evidence that the relationship is not linear
+crPlots(linreg)
+
+```
+
+## Summary
+
+In this exercise, the goal was to introduce different concepts in modeling, using a simple linear regression. With this base, we will extend the modeling idea with different examples that illustrate some of the tools that exist in R when we have more complex relationships. Given the time available for this workshop, even if the subsequent examples are more difficult to understand, this first, more developed example hopefully provides you some of the relevant tools to take the next step in your work to define and use different models. . 
+
+## Example
+
+The below example looks at the relationship between the weight of chickens as a function of the amount of lysine, which is an essential amino acid in the early phases of development. 
+```{r example}
+
+weight <-c(14.7, 17.8, 19.6, 18.4, 20.5, 21.1, 17.2, 18.7, 20.2, 16.0, 17.8, 19.4)
+lysine <-c(0.09, 0.14, 0.18, 0.15, 0.16, 0.23, 0.11, 0.19, 0.23, 0.13, 0.17, 0.21)
+
+```
+
+

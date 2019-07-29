@@ -1,0 +1,216 @@
+---
+title: "Nonparametric regression"
+author: "Paul Esker and Felipe Dalla Lana"
+output:
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    fontsize: 11pt
+    geometry: margin=1in
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.height=4, fig.width=6, message=FALSE)
+options(width=999)
+```
+
+## Background
+
+Many times, we are interested in estimating the relationship between different variables that has a general form described as follows:
+
+$$f(x) = E[Y|X=x]$$
+
+Where we do not have a specific function type defined (i.e., specific model):
+
+$$Y = f(X) + e$$
+As such, we would like to describe the data using the most appropriate model and estimate the parameters. In this introductory exercise, we will use nonparametric methods to do such a task and focus on three possible methods:
+
+* Moving average  = calculate the mean value, *Y*, around a window of *X* values
+* Weighted moving averages = kernel smoothing: weight data as a function of distance, i.e., points closer in space are given greater weight
+* Local polynomial regression: adjust the polynomial value based on least squares methods for observations in a local window (weighted by distance)
+
+## Packages
+
+```{r packages}
+
+library(tidyverse)
+library(Hmisc)
+library(corrplot)
+library(readr)
+library(HH)
+library(car)
+library(scatterplot3d)
+library(leaps)
+
+```
+
+## Data
+
+For this example, we are using a database called *Emissions*. This data comes from FAO and represents the amount of $CO~2$ emitted in different countries from Mexico to Panama. The number of years of data collection was 21. The data are also standardized based on the area under agricultural production. Given that one of the authors of this worked in Costa Rica, we will use that as our data source for the exercise. This will required working with a database that is in .csv format and then subset out the part that relates to Costa Rica. To accomplish this first part, we will using coding based on *tidyverse*, especially using *dplyr*.
+
+Please note: I have located the data in my local *Document* folder for eash of reading this into R. You can change the location accordingly for your personal use. If you are using this as a script, you can also use the import options in RStudio. 
+
+```{r data}
+
+emissions <- read_csv("~/Documents/Emissions.csv")
+head(emissions)
+
+# Quick summary of the results across the countries
+
+summaries <- emissions %>% group_by(Country)
+summaries %>% str()
+summaries %>% summarise(
+  em_mean = mean(CO2_area),
+  em_sd = sd(CO2_area),
+  em_cv = sd(CO2_area)/mean(CO2_area)*100,
+  em_max = max(CO2_area),
+  em_min = min(CO2_area)
+)
+
+# Create a subset database to work with data only from Costa Rica
+costa_rica <- filter(emissions, Country=="CostaRica")
+head(costa_rica)
+
+```
+
+## Loess 1
+
+This the method based on local polynomial regression.
+
+```{r loess}
+
+# What does the relationship look like?
+
+CR <- ggplot(data=costa_rica, aes(x=Year, y=CO2_area))
+
+CR + geom_point()
+CR + geom_point() + geom_line()
+
+# Loess
+
+cr_np1 <- with(costa_rica, loess(CO2_area ~ Year , span=0.75)) #default method
+summary(cr_np1)
+
+crnp1_pred <- predict(cr_np1, data.frame(Year=seq(1,21,0.5)))
+pred1 <- data.frame(Year=seq(1,21,0.5), crnp1_pred)
+
+# Graphically
+ej1 <- ggplot() 
+ej1 +
+  geom_point(data=costa_rica, aes(x=Year, y=CO2_area)) +
+  geom_line(data=costa_rica, aes(x=Year, y=CO2_area), lty=1) +
+  geom_line(data=pred1, aes(x=Year, y=crnp1_pred), lty=2)
+
+```
+
+## Modify the Loess line 
+
+Let's look at some different line forms with Loess. 
+
+```{r loess2}
+
+# Span=0.5
+cr_np2 <- with(costa_rica, loess(CO2_area ~ Year , span=0.5))
+crnp2_pred <- predict(cr_np2, data.frame(Year=seq(1,21,0.5)))
+pred2 <- data.frame(Year=seq(1,21,0.5), crnp2_pred)
+
+ej1 <- ggplot() 
+ej1 +
+  geom_point(data=costa_rica, aes(x=Year, y=CO2_area)) +
+  geom_line(data=costa_rica, aes(x=Year, y=CO2_area), lty=1) +
+  geom_line(data=pred1, aes(x=Year, y=crnp1_pred), lty=2, lwd=1.5) +
+  geom_line(data=pred2, aes(x=Year, y=crnp2_pred), lty=3, lwd=1.5)
+
+# Span=0.25
+cr_np3 <- with(costa_rica, loess(CO2_area ~ Year, span=0.25))
+crnp3_pred <- predict(cr_np3, data.frame(Year=seq(1,21,0.5)))
+pred3 <- data.frame(Year=seq(1,21,0.5), crnp2_pred)
+
+ej1 <- ggplot() 
+ej1 +
+  geom_point(data=costa_rica, aes(x=Year, y=CO2_area)) +
+  geom_line(data=costa_rica, aes(x=Year, y=CO2_area), lty=1) +
+  geom_line(data=pred1, aes(x=Year, y=crnp1_pred), lty=2, lwd=1.5) +
+  geom_line(data=pred2, aes(x=Year, y=crnp2_pred), lty=3, lwd=1.5) +
+  geom_line(data=pred3, aes(x=Year, y=crnp3_pred), lty=4, lwd=1.5)
+
+```
+
+## Smoothing splines
+
+In our next example, we will use the function *smooth.spline()*. With this method, we can change the smoothing parameter and the methodology is based on crossed-validation to be able to define the parameter.
+
+```{r spline}
+
+# Base method (by default)
+cr_spline <- with(costa_rica, smooth.spline(x=Year, y=CO2_area))
+cr_spline
+summary(cr_spline)
+
+crsp_pred <- predict(cr_spline, data.frame(Year=seq(1,21,0.5)))
+pred4 <- data.frame(Year=seq(1,21,0.5), crsp_pred)
+
+#Compare the fit with the Loess fit
+ej1 <- ggplot() 
+ej1 +
+  geom_point(data=costa_rica, aes(x=Year, y=CO2_area)) +
+  geom_line(data=costa_rica, aes(x=Year, y=CO2_area), lty=1) +
+  geom_line(data=pred1, aes(x=Year, y=crnp1_pred), lty=2, lwd=1.5) +
+  geom_line(data=pred4, aes(x=Year, y=Year.2), lty=4, lwd=1.5)
+```
+
+## Change smoothing parameter
+
+We will now create a series of model runs where we change the smoothing parameter.
+
+```{r smoothers}
+
+cr25 <- with(costa_rica, smooth.spline(x=Year, y=CO2_area, spar=0.25))
+pred25 <-  data.frame(Year=seq(1,21,0.5), pred=(predict(cr25, data.frame(Year=seq(1,21,0.5)))))
+
+cr35 <- with(costa_rica, smooth.spline(x=Year, y=CO2_area, spar=0.35))
+pred35 <-  data.frame(Year=seq(1,21,0.5), pred=(predict(cr35, data.frame(Year=seq(1,21,0.5)))))
+
+cr45 <- with(costa_rica, smooth.spline(x=Year, y=CO2_area, spar=0.45))
+pred45 <-  data.frame(Year=seq(1,21,0.5), pred=(predict(cr45, data.frame(Year=seq(1,21,0.5)))))
+
+cr55 <- with(costa_rica, smooth.spline(x=Year, y=CO2_area, spar=0.55))
+pred55 <-  data.frame(Year=seq(1,21,0.5), pred=(predict(cr55, data.frame(Year=seq(1,21,0.5)))))
+
+cr65 <- with(costa_rica, smooth.spline(x=Year, y=CO2_area, spar=0.65))
+pred65 <-  data.frame(Year=seq(1,21,0.5), pred=(predict(cr65, data.frame(Year=seq(1,21,0.5)))))
+
+cr75 <- with(costa_rica, smooth.spline(x=Year, y=CO2_area, spar=0.75))
+pred75 <-  data.frame(Year=seq(1,21,0.5), pred=(predict(cr75, data.frame(Year=seq(1,21,0.5)))))
+
+cr85 <- with(costa_rica, smooth.spline(x=Year, y=CO2_area, spar=0.85))
+pred85 <-  data.frame(Year=seq(1,21,0.5), pred=(predict(cr85, data.frame(Year=seq(1,21,0.5)))))
+
+ej1 <- ggplot() 
+ej1 +
+  geom_point(data=costa_rica, aes(x=Year, y=CO2_area)) +
+  geom_line(data=costa_rica, aes(x=Year, y=CO2_area), lty=1) +
+  geom_line(data=pred25, aes(x=Year, y=pred.Year.1), lty=2, lwd=1.2) +
+  geom_line(data=pred35, aes(x=Year, y=pred.Year.1), lty=3, lwd=1.2) +
+  geom_line(data=pred45, aes(x=Year, y=pred.Year.1), lty=4, lwd=1.2) +
+  geom_line(data=pred55, aes(x=Year, y=pred.Year.1), lty=5, lwd=1.2) +
+  geom_line(data=pred65, aes(x=Year, y=pred.Year.1), lty=6, lwd=1.2) +
+  geom_line(data=pred75, aes(x=Year, y=pred.Year.1), lty=2, lwd=1.3) +
+  geom_line(data=pred85, aes(x=Year, y=pred.Year.1), lty=3, lwd=1.3) 
+  
+```
+
+## Last word for now
+
+To close this discussion, it is natural to ask the following question, "What methods can we use to examine and control the smoothing parameter?" 
+
+Within this list, there are several including:
+
+* trial and error,
+* degree of smoothing compared with the data fidelity or reliability,
+* minimize the mean square error,
+* use cross-validation methods.

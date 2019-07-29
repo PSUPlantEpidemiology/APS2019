@@ -1,0 +1,66 @@
+---
+title: "Some additional references - APS 2019 Workshop"
+author: "Paul Esker and Felipe Dalla Lana"
+output:
+  word_document:
+    toc: no
+  html_document:
+    df_print: paged
+    fontsize: 11pt
+    geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Here are some useful online references that related to topics discussed during the workshop. 
+
+*Modeling*
+
+* https://www3.nd.edu/~steve/Rcourse/Lecture7v1.pdf
+
+* https://tutorials.iq.harvard.edu/R/Rstatistics/Rstatistics.html
+
+* http://www.statslab.cam.ac.uk/~pat/redwsheets.pdf 
+
+*tidyverse*
+
+* https://www.tidyverse.org/
+
+* http://r4ds.had.co.nz/
+
+* https://jrnold.github.io/r4ds-exercise-solutions/
+
+*Correlation and Regression*
+
+* https://www.statmethods.net/stats/regression.html
+
+* http://rcompanion.org/handbook/F_12.html
+
+*Multiple regression*
+
+* http://www.statmethods.net/stats/regression.html
+
+* http://ww2.coastal.edu/kingw/statistics/R-tutorials/multregr.html
+
+* http://www.r-bloggers.com/r-tutorial-series-multiple-linear-regression/ 
+
+* https://newonlinecourses.science.psu.edu/stat501/node/283/ 
+
+
+*Nonlinear regression*
+
+* https://www.jstatsoft.org/article/view/v066i05/v66i05.pdf
+
+* http://www.apsnet.org/edcenter/advanced/topics/EcologyAndEpidemiologyInR/DiseaseProgress/Pages/NonlinearRegression.aspx
+
+*Books and other articles*
+
+* Nonlinear Regression with R: https://www.springer.com/la/book/9780387096155
+
+* Extending the Linear Model with R: https://www.crcpress.com/Extending-the-Linear-Model-with-R-Generalized-Linear-Mixed-Effects-and/Faraway/p/book/9781498720960
+
+
+
+

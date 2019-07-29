@@ -1,0 +1,347 @@
+---
+title: "Mosquito Dose-Response"
+author: "Julie Baniszewski and Paul Esker"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    fontsize: 11pt
+    geometry: margin=1in
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.height=4, fig.width=6, message=FALSE)
+options(width=999)
+```
+
+## Background
+
+This example was developed by Julie Baniszewski, a PhD student in the Department of Entomology at Penn State. Julie participated in our last workshop in Mexico under the INTAD-Tag Along program (International Agriculture and Development graduate program). This is a robust example of using dose-response methods in R based on generalized linear modeling concepts (including mixed model). 
+
+Data set: 
+Mosquito toxicity was tested with 4 instars and monitored until pupation. The experimental design was 3 blocks with 4 replicates each to test mosquito toxicity. 
+
+The aim is to look at ultimate %pupation and LC50, LC90 for 24, 48 hrs. 
+
+What is in the database?
+* Concentration = weight:volume concentration of chemical
+* Instar = 1-4 stages of mosquito larvae introduced to chemical treatment
+* Block = Growth Chamber
+* Rep = 1-4 replicates within each block
+* Total = total number of initial larvae
+* Pupae = total number of larvae that reached pupation
+* %Pupated = % larvae that pupated and ultimately survived the treatment
+* Day0 = total number of initial larvae
+* Day1p = proportion of larvae mortality on Day 1 post chemical exposure
+* Day2p = proportion of larvae mortality on Day 2 post chemical exposure
+
+## Load packages
+
+Here, we will use the readxl package to work with Excel-oriented files. Like the nonparametric regression example, we have defined a local repository for the file and this can be changed for individual use. We have several other different packages specific to work with dose-response curves and model fitting.
+
+```{r paquetes}
+library(readxl)
+library(drc)
+library(car)
+library(cowplot)
+library(tidyverse)
+```
+
+Importing data set:
+```{r DR Data}
+DR <- read_excel("~/Documents/DR_Data_Sheet.xlsx")
+str(DR)
+summary(DR)
+```
+
+## Preliminary examination of data
+
+Start by looking at data (ultimate survival): dependent variable '%pupation'
+```{r Look at data response plots without and with logit scale}
+
+op <- par(mfrow = c(1, 2), mar=c(3.2,3.2,2,.5), mgp=c(2,.7,0)) #make two plots in two columns 
+plot(DR$`%Pupated` ~ DR$Concentration, data = DR, main="Original Dose Scale")
+plot(DR$`%Pupated` ~ logit(DR$Concentration+0.01), data = DR, main="Logarithmic Dose Scale")
+
+```
+
+Look at control data
+```{r check control mortality}
+#if mortality is >> 5%, may need Abbot's Formula for correction (Correction%= (1-treatmetn/control)*100)
+
+aggregate(DR[,7], list(DR$Concentration), mean)
+#Control is ~5% motality, is okay
+
+```
+
+## Initial models: dose-response and linear
+
+Option 1: use Dose Response Model
+```{r DR model}
+
+DR1<-drm(DR$`%Pupated` ~ log1p(DR$Concentration), DR$Instar, data = DR, fct=LL.2(names=c("Slope", "LD50")), type=("binomial"), na.action=na.omit)
+summary(DR1)
+
+#look at residuals
+op <- par(mfrow = c(1, 2), mar=c(3.2,3.2,2,.5), mgp=c(2,.7,0)) #put two graphs together
+plot(residuals(DR1) ~ fitted(DR1), main="Residuals vs Fitted")
+abline(h=0) #should look random
+qqnorm(residuals(DR1))
+qqline(residuals(DR1)) 
+
+#shows slope of pupation, LD50 is significantly different than 0 for each instar
+par(mfrow = c(1, 1), mar=c(3.2,3.2,.5,.5), mgp=c(2,.7,0))
+plot(DR1, broken=TRUE, xlim=c(0,2), bty="l", xlab="Concentration", ylab="Survival to Pupation")
+modelFit(DR1)
+EDcomp(DR1,c(50,50), reverse=TRUE)
+#Instar has little effect on pupation, instars 1 and 2 very similar, 3 and 4 increasing survival. Overall, model doesn't fit well.
+```
+
+Option 2: look at linear model
+```{r Linear Model}
+pairs(DR$`%Pupated` ~ (DR$Block) + (DR$Rep) + DR$Concentration + DR$Instar)
+#Concentration has trend with % pupated; block/reps random, no pattern as expected. Instar appears to have little effect
+op <- par(mfrow = c(1, 1), mar=c(3.2,3.2,0,.5), mgp=c(2,.7,0))
+plot(DR$`%Pupated` ~ DR$Concentration, data = DR, bty="l")
+pupation.lm1 <- lm(DR$`%Pupated` ~ (Block) + (Rep) + Concentration + Instar + Concentration:Instar, data = DR)
+summary(pupation.lm1)
+plot(pupation.lm1, bty="l")
+
+#look at residuals
+op <- par(mfrow = c(1, 2), mar=c(3.2,3.2,2,.5), mgp=c(2,.7,0)) #put two graphs together
+plot(residuals(pupation.lm1) ~ fitted(pupation.lm1), main="Residuals vs Fitted")
+abline(h=0) #should look random
+qqnorm(residuals(pupation.lm1))
+qqline(residuals(pupation.lm1)) 
+#not quite normal on QQ plot, residuals not random -> use logit or beta distribution
+```
+
+```{r Linear Model with logit bionomial distribution because violation of normality assumption}
+#logit binomial dist
+pupation.lm2 <- glm((DR$`%Pupated`)~ (DR$Block) + (DR$Rep) + (DR$Concentration) + (DR$Instar) + (DR$Concentration:DR$Instar), family = binomial(link = "logit"))
+plot(pupation.lm2, bty="l")
+
+#look at residuals
+plot(residuals(pupation.lm2) ~ fitted(pupation.lm2), main="Residuals vs Fitted")
+abline(h=0) #should look random
+qqnorm(residuals(pupation.lm1))
+qqline(residuals(pupation.lm1)) 
+#residuals random, more normal on qqplot
+summary(pupation.lm2)
+
+#compare linear model with non linear, linear > DR2 due to much lower AIC
+AIC(DR1, pupation.lm2)
+```
+
+## Log-logistic and Weibull models
+
+Other tools related to dose-response models
+```{r DR other tools}
+#compare log-logistic and Weibull models (pooling instar because non-significant)
+DR0 <- drm(DR$`%Pupated` ~ DR$Concentration, data = DR, fct = LL.4())
+DR1 <- drm(DR$`%Pupated` ~ DR$Concentration, data = DR, fct = W1.4())
+DR2 <- drm(DR$`%Pupated` ~ DR$Concentration, data = DR, fct = W2.4())
+
+par(mfrow=c(1,1), mar=c(3.2,3.2,.5,.5), mgp=c(2,.7,0))
+plot(DR0, broken=TRUE, xlab="Conc", ylab="% Pupation", lwd=2, cex=1.2, cex.axis=1.2, cex.lab=1.2, bty="l")
+plot(DR1, add=TRUE, broken=TRUE, lty=2, lwd=2) #Weibull-1
+plot(DR2, add=TRUE, broken=TRUE, lty=3, lwd=2) #Weibull-2
+
+#Effective dose
+ED(DR1,50,interval="delta")
+ED(DR1,90,interval="delta")
+ED(DR1,95,interval="delta")
+
+edLL<-data.frame(ED(DR0,c(10,50,90),interval="delta", display=FALSE),ll="Log-logistic")            
+edW1<-data.frame(ED(DR1,c(10,50,90),interval="delta", display=FALSE),ll="Weibull 1")
+edW2<-data.frame(ED(DR2,c(10,50,90),interval="delta", display=FALSE),ll="Weibull 2")
+CombED<-rbind(edLL,edW1,edW2)
+
+p1 <- ggplot(data=CombED[c(1,4,7),], aes(x=ll, y=Estimate))+ geom_bar(stat="identity", fill="lightgreen", colour="black")+
+  geom_errorbar(aes(ymin=Lower, ymax=Upper), width=0.1) + ylab("ED10")+  xlab("")
+p2 <- ggplot(data=CombED[c(2,5,8),], aes(x=ll, y=Estimate))+ geom_bar(stat="identity", fill="lightgreen", colour="black")+
+  geom_errorbar(aes(ymin=Lower, ymax=Upper), width=0.1) + ylab("ED50")+ xlab("")
+p3 <- ggplot(data=CombED[c(3,6,9),], aes(x=ll, y=Estimate))+ geom_bar(stat="identity", fill="lightgreen", colour="black")+
+  geom_errorbar(aes(ymin=Lower, ymax=Upper), width=0.1) + ylab("ED90")+  xlab("Sigmoid four parameter models")
+plot_grid(p1,p2,p3, ncol=1)
+#look at different tests, either Log-logistic or Weibull 1 most appropriate
+
+comped(CombED[c(1,4),1],CombED[c(1,4),2],log=F,operator = "-")
+```
+
+## Mortality Example 24 hr 
+
+Look at Day 1 (24hr Mortality)
+```{r DR Day 1 mortality Data}
+summary(DR)
+op <- par(mfrow = c(1, 2), mar=c(3.2,3.2,2,.5), mgp=c(2,.7,0)) 
+plot(DR$Day1p~ DR$Concentration, data = DR, main="Original Dose Scale")
+plot(DR$Day1p ~ logit(DR$Concentration+0.01), data = DR, main="Logarithmic Dose Scale")
+
+#Look at control data, make sure mortality is < ~ 5%
+aggregate(DR[,9], list(DR$Concentration), mean)
+```
+
+Option 1:
+```{r DR Mortality}
+#option 1: use DR
+Day1DR<-drm(DR$Day1p ~ DR$Concentration, DR$Instar, data = DR, fct=LL.2(names=c("Slope", "LD50")), type=("binomial"), na.action=na.omit)
+summary(Day1DR)
+
+#shows slope, LD50 is significantly different than 0 for each instar
+par(mfrow = c(1, 1), mar=c(3.2,3.2,.5,.5), mgp=c(2,.7,0))
+plot(Day1DR, broken=TRUE, xlim=c(0,2), bty="l", xlab="Concentration", ylab="Mortality")
+EDcomp(Day1DR,c(50,50), reverse=TRUE)
+#Instar has little effect on mortality, instars 1 and 2 similar, 3 and 4 less responsive. Overall, model doesn't fit well.
+
+#look at residuals
+op <- par(mfrow = c(1, 2), mar=c(3.2,3.2,2,.5), mgp=c(2,.7,0)) 
+plot(residuals(Day1DR) ~ fitted(Day1DR), main="Residuals vs Fitted")
+qqnorm(residuals(Day1DR))
+qqline(residuals(Day1DR)) 
+#data not normally distributed
+
+op <- par(mfrow = c(1, 2), mar=c(3.2,3.2,.5,.5), mgp=c(2,.7,0))
+plot(Day1DR, broken=TRUE, bty="l", xlab="Conc", ylab="Mortality")
+plot(Day1DR, broken=TRUE, bty="l", xlab="Concentration", ylab="Mortality",type="all")
+modelFit(Day1DR)
+#model doesn't fit very well, instar doesnt have much effect on DR
+```
+
+Option 2:
+```{r LM mortality}
+#Option 2: look at linear model
+pairs(DR$Day1p ~ (DR$Block) + (DR$Rep) + DR$Concentration + DR$Instar)
+op <- par(mfrow = c(1, 1), mar=c(3.2,3.2,0,.5), mgp=c(2,.7,0))
+plot(DR$Day1p ~ DR$Concentration, data = DR, bty="l")
+day1.lm <- lm(DR$Day1p ~ (Block) + (Rep) + Concentration + Instar + Concentration:Instar, data = DR)
+summary(day1.lm)
+plot(day1.lm, which=1, bty="l")
+
+#look at residuals
+plot(residuals(day1.lm) ~ fitted(day1.lm), main="Residuals vs Fitted")
+abline(h=0) #should look random
+qqnorm(residuals(day1.lm))
+qqline(residuals(day1.lm)) 
+
+# fit with binomial dist
+day1.lm2 <- glm((DR$Day1p)~ (DR$Block) + (DR$Rep) + (DR$Concentration) + (DR$Instar) + (DR$Concentration:DR$Instar), family = binomial(link = "logit"))
+summary(day1.lm2)
+plot(day1.lm2, which=1, bty="l")
+plot(residuals(day1.lm2) ~ fitted(day1.lm2), main="Residuals vs Fitted")
+qqnorm(residuals(day1.lm2))
+qqline(residuals(day1.lm2)) 
+#binomial logit fits better
+```
+
+```{r Compare DR and LM model}
+#compare linear model with DR, linear > DR due to lower AIC
+AIC(Day1DR, day1.lm2, k=2)
+summary(day1.lm2)
+```
+
+Other Tools:
+```{r Day 1 Mortality Wiebull}
+#Using drm package to determine effective dose.
+#compare log-logistic and Weibull models (pooling instar because non-significant)
+Day1DR <- drm(DR$Day1p ~ DR$Concentration, data = DR, fct = LL.4())
+Day1DR2 <- drm(DR$Day1p ~ DR$Concentration, data = DR, fct = W1.4())
+Day1DR3 <- drm(DR$Day1p ~ DR$Concentration, data = DR, fct = W2.4())
+
+par(mfrow=c(1,1), mar=c(3.2,3.2,.5,.5), mgp=c(2,.7,0))
+plot(Day1DR, broken=TRUE, xlab="Conc", ylab="% Pupation", lwd=2, cex=1.2, cex.axis=1.2, cex.lab=1.2, bty="l")
+plot(Day1DR2, add=TRUE, broken=TRUE, lty=2, lwd=2) #Weibull-1
+plot(Day1DR3, add=TRUE, broken=TRUE, lty=3, lwd=2) #Weibull-2
+
+#Effective dose using log-logistic model
+ED(Day1DR,50,interval="delta")
+ED(Day1DR,90,interval="delta")
+ED(Day1DR,95,interval="delta")
+
+edLL<-data.frame(ED(Day1DR,c(10,50,90),interval="delta", display=FALSE),ll="Log-logistic")            
+edW1<-data.frame(ED(Day1DR2,c(10,50,90),interval="delta", display=FALSE),ll="Weibull 1")
+edW2<-data.frame(ED(Day1DR3,c(10,50,90),interval="delta", display=FALSE),ll="Weibull 2")
+CombED<-rbind(edLL,edW1,edW2)
+
+p1 <- ggplot(data=CombED[c(1,4,7),], aes(x=ll, y=Estimate))+ geom_bar(stat="identity", fill="lightgreen", colour="black")+
+  geom_errorbar(aes(ymin=Lower, ymax=Upper), width=0.1) + ylab("ED10")+  xlab("")
+p2 <- ggplot(data=CombED[c(2,5,8),], aes(x=ll, y=Estimate))+ geom_bar(stat="identity", fill="lightgreen", colour="black")+
+  geom_errorbar(aes(ymin=Lower, ymax=Upper), width=0.1) + ylab("ED50")+ xlab("")
+p3 <- ggplot(data=CombED[c(3,6,9),], aes(x=ll, y=Estimate))+ geom_bar(stat="identity", fill="lightgreen", colour="black")+
+  geom_errorbar(aes(ymin=Lower, ymax=Upper), width=0.1) + ylab("ED90")+  xlab("Sigmoid four parameter models")
+plot_grid(p1,p2,p3, ncol=1)
+```
+
+## Mortality Example 48 hr 
+
+Look at Day 2 (48hr) Mortality
+```{r DR mortality Data}
+summary(DR)
+op <- par(mfrow = c(1, 2), mar=c(3.2,3.2,2,.5), mgp=c(2,.7,0)) 
+plot(DR$Day2p ~ DR$Concentration, data = DR, main="Original Dose Scale")
+plot(DR$Day2p ~ logit(DR$Concentration+0.01), data = DR, main="Logarithmic Dose Scale")
+
+#Look at control data, make sure mortality is < ~ 5%
+aggregate(DR[,10], list(DR$Concentration), mean)
+```
+
+Option 1: Dose Response Curve
+```{r DRC mortality}
+#option 1: use DR
+Day2DR<-drm(DR$Day2p ~ (DR$Concentration), DR$Instar, data = DR, fct=LL.2(names=c("Slope", "LD50")), type=("binomial"), na.action=na.omit)
+summary(Day2DR)
+
+#shows slope, LD50 is significantly different than 0 for each instar
+par(mfrow = c(1, 1), mar=c(3.2,3.2,.5,.5), mgp=c(2,.7,0))
+plot(Day2DR, broken=TRUE, xlim=c(0,2), bty="l", xlab="Concentration", ylab="Mortality")
+EDcomp(Day2DR,c(50,50), reverse=TRUE)
+#Instar has little effect on mortality, instars 1 and 2 similar, 3 and 4 less responsive. Overall, model doesn't fit well.
+
+#look at residuals
+op <- par(mfrow = c(1, 2), mar=c(3.2,3.2,2,.5), mgp=c(2,.7,0))
+plot(residuals(Day2DR) ~ fitted(Day2DR), main="Residuals vs Fitted")
+qqnorm(residuals(Day2DR))
+qqline(residuals(Day2DR)) 
+#data not normally distributed
+
+op <- par(mfrow = c(1, 2), mar=c(3.2,3.2,.5,.5), mgp=c(2,.7,0))
+plot(Day2DR, broken=TRUE, bty="l", xlab="Conc", ylab="Mortality")
+modelFit(Day2DR)
+#model doesn't fit very well, instar doesnt have much effect on DR
+```
+
+Option 2: Linear Model
+```{r DR LM mortality}
+#Option 2: look at linear model
+pairs(DR$Day2p ~ (DR$Block) + (DR$Rep) + DR$Concentration + DR$Instar)
+op <- par(mfrow = c(1, 1), mar=c(3.2,3.2,0,.5), mgp=c(2,.7,0))
+plot(DR$Day2p ~ DR$Concentration, data = DR, bty="l")
+day2.lm <- lm(DR$Day2p ~ (Block) + (Rep) + Concentration + Instar + Concentration:Instar, data = DR)
+summary(day2.lm)
+plot(day2.lm, which=1, bty="l")
+
+#look at residuals
+plot(residuals(day2.lm) ~ fitted(day2.lm), main="Residuals vs Fitted")
+abline(h=0) #should look random
+qqnorm(residuals(day2.lm))
+qqline(residuals(day2.lm)) 
+
+# fit with binomial dist
+day2.lm2 <- glm((DR$Day2p)~ (DR$Block) + (DR$Rep) + (DR$Concentration) + (DR$Instar) + (DR$Concentration:DR$Instar), family = binomial(link = "logit"))
+summary(day2.lm2)
+plot(day2.lm2, which=1, bty="l")
+plot(residuals(day2.lm2) ~ fitted(day2.lm2), main="Residuals vs Fitted")
+qqnorm(residuals(day2.lm2))
+qqline(residuals(day2.lm2)) 
+```
+
+```{r Compare DR and LM models}
+#compare linear model with DR, linear > DR due to lower AIC
+AIC(Day2DR, day2.lm, day2.lm2)
+```
+
+
+
+

@@ -1,0 +1,158 @@
+---
+title: "Polynomial regression"
+author: "Paul Esker and Felipe Dalla Lana"
+output:
+  word_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    fontsize: 11pt
+    geometry: margin=1in
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE)
+```
+
+## Background
+
+In many studies, for example if one looks the relationship between nitrogen and yield for many cereal crops, the relationship is not linear, rather there is often a plateau where after a specific amount, the response decreases. A simpler linear-type model will explain some of the variability, but not very well. In these situations we can consider a polynomial form to the model.
+
+We can define this relationship in general terms as the the relation betweeen the independent variable, $x$, and the expected response, $E(y|x)$. 
+
+Note: Very important with this type of analysis is to understand the software that you are using since often we focus on use $X$ and $X^2$, which depending on how those variables are defined, leads to high collinearity. This example illustrates that concept and provides methods to overcome the issue.
+
+```{r packages}
+
+library(tidyverse)
+library(Hmisc)
+library(corrplot)
+library(readr)
+library(HH)
+library(car)
+
+```
+
+## Data
+
+For this example, we have the following situation:
+
+* Density = Seeding density (number of plants per $m^2$)
+* Yield = quantity of biomass
+
+```{r data}
+
+density <- rep(c(10,20,30,40,50), each=3)
+yield <- c(12.2, 11.4, 12.4, 16, 15.5, 16.5, 18.6, 20.2, 18.2, 17.6, 19.3, 17.1, 18, 16.4, 16.6)
+
+densities <- data.frame(density, yield)
+
+```
+
+## Linear regression
+
+To start, we will build a simple linear regression models and examine the overall model fit, including model assumptions.
+
+```{r lineal}
+
+model1 <- lm(yield~density)
+anova(model1)
+summary(model1)
+
+plot(model1) # You hopefully can see that the model fit is not very good
+
+ci.plot(model1) # It should be obvious that the regression line does not reflect the actual relationship well
+
+```
+
+## Quadratic regression 1
+
+Given the result just seem with the simple linear regression, we will construct a quadratic model. The structure of the analysis is the same, but we will create a variable for *density* to reflect the squared term, $density^2$.
+
+```{r quadratic1}
+
+# Define the density as a squared term (there are multiple ways to do this, but we will use a simple approach for now)
+
+density2<-density^2
+
+model2<-lm(yield~density + density2)
+
+# Significance
+anova(model2)
+summary(model2)
+
+# Assumptions
+plot(model2)
+
+# Let's focus on comparing the two models based on Cook's Distance.
+plot(model1, which=4) 
+plot(model2, which=4) 
+
+# F-test between model 1 and model 2
+anova(model1, model2)
+
+# Additional tools to understand the model fit and model assumptions for the quadratic form
+influence.measures(model2) # this is a general function to create the base for subsequent measurments
+dffits(model2)
+dfbeta(model2)
+covratio(model2)
+cooks.distance(model2)
+vif(model2) # 26.71 is the value, values greater than 10 typically indicate high collinearity
+```
+
+## Quadratic regression 2
+
+Given the result for the first quadratic regression that indicated high collinearity for $density$ and $density^2$, what we can do to remove this without affecting the analysis is to center the *density* variable and then run the analysis again. This is a very common practice to reduce the impact of not only high collinearity but also for cases for things like multivariate statistics where the scale for individual response variables can have high leverage on the overall analysis. The fuction, *scale*, allows us to the scale the density considering the mean value (we are not taking into account the variance, which is another common approach = location-scale type centering).
+
+```{r}
+# Center and standardize the density variable
+
+# This approach substracts the mean, scale=FALSE tells R that we do not take into account the standard deviation in the analysis
+den_centered<-scale(density, center=TRUE, scale=FALSE) 
+
+# The same if we did this by "hand"
+density-mean(density)
+
+# Create a new variable for density^2 based on centered values
+den_centered2 <- den_centered^2
+
+plot(den_centered, den_centered2)
+
+# Regression model with centered data
+
+model3<-lm(yield~den_centered+den_centered2)
+anova(model3)
+summary(model3)
+
+# Assumptions
+plot(model3)
+
+# Compare original model with the centered quadratic model
+anova(model1, model3)
+
+# Collinearity?
+dffits(model3)
+dfbeta(model3)
+covratio(model3)
+cooks.distance(model3)
+vif(model3) #The value is now = 1
+
+```
+
+## What occurred?
+
+We will take a look at the correlations between the original forms for density and centered forms. 
+
+```{r comparison}
+
+cor(density, density2) #high correlation = collinearity
+cor(den_centered, den_centered2) #no correlation
+
+```
+
+## Summary and considerations
+
+The goal of this exercise was to illustrate how one needs to check any *package* or *software* regarding assumptions on linear, quadratic, higher polynomial terms. This becomes very important as you consider working with centered or standardized variables. 

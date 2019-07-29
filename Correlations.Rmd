@@ -1,0 +1,104 @@
+---
+title: "Correlation"
+author: "Paul Esker and Felipe Dalla Lana"
+output:
+  word_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    fontsize: 11pt
+    geometry: margin=1in
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Correlation analysis is helpful to identify the associations between different variables (measurements). For databases with combinations of qualitative and quantitative data, we use this as a preliminary step to understand the likely relationships, or potential explanatory value of different measurements. We will apply some examples here based on *tidyverse* to estimate the correlation coefficients based on different methods. We will also visualize the associations graphically. Two primary packages we need for this example are *Hmisc* y de *corrplot*. We will also use the package *readr* to read data into R.
+
+
+```{r paquetes}
+
+library(tidyverse)
+library(Hmisc)
+library(corrplot)
+library(readr)
+
+```
+
+## Database
+
+There are different options for working with data that is in a local folder. For many, the manual options with a data import are easier, but it is also useful to understand how you can directly read data into R. We will use both at time during the workshop, so do not stress too much for now.
+
+```{r datos}
+
+# Introduce the data to R - in this situation, we apply the function read_csv the most important item is to know the physical location of the file. In this example, I mainain a copy in Documents folder on my Mac
+  
+correlations <- read_csv("~/Documents/Correlations.csv")
+correlations
+
+```
+
+## Pearson
+
+We will begin with the first type of correlation, which is the Pearson correlation. In this situation, we assume that we have quantitative variables. Depending on the database, you may just define the function by calling the name of the database. Nonetheless, we do need to understand our database and "clean" this some, especially to ignore the first column that defines some treatment. We will then use the function *rcorr*. This function allows us to perform two types of analyses: (1) Pearson and (2) Spearman (nonparametric method).
+
+In R, and this is something that will carry throughout different types of models and analyses, there are often different packages and functions that we can use. Each has its advantages and disadvantages, for example, some functions do not provide a test statistic. In other cases the method does not permit the use of some of the graphical methods to visualize the associations. 
+
+
+```{r pearson}
+
+# In this first example, the "select" option is indicating that we will use all columns except the first one, which is for treatment
+
+example_cor <- correlations %>% 
+  select(-Treatment) %>%
+  as.matrix() %>%
+  rcorr(type = "pearson")
+
+example_cor
+
+# We will now apply the function corrplot, which is in the package "corrplot" to look at the associations
+
+example_cor2 <- correlations %>% 
+  select(-Treatment) %>%
+  as.matrix() %>%
+  cor(method = "pearson")
+
+corrplot(example_cor2, method="number")
+corrplot(example_cor2, method="circle")
+
+```
+
+## Spearman
+
+This is a non-parametric rank-order correlation analysis. 
+
+```{r spearman}
+
+# Following again from our example.
+
+example_corB <- correlations %>% 
+  select(-Treatment) %>%
+  as.matrix() %>%
+  rcorr(type = "spearman")
+
+example_corB
+
+# Graphically, following from our initial example.
+
+example_corB2 <- correlations %>% 
+  select(-Treatment) %>%
+  as.matrix() %>%
+  cor(method = "spearman")
+
+corrplot(example_corB2, method="number")
+corrplot(example_corB2, method="circle")
+
+```
+
+## Summary
+
+The goal of this introductory example was to provide some of the tools we can apply to calculate different correlation coefficients and graph the results. Remember that with these examples we assume a linear correlation so the intepretation of the results need to consider the biological associations as well (think about this for a correlation coefficient of 0 that has a curvilinear relationship).

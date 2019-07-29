@@ -1,0 +1,164 @@
+---
+title: "Nonlinear regression"
+author: "Paul Esker"
+output:
+  html_document:
+    df_print: paged
+    fontsize: 11pt
+    geometry: margin=1in
+    toc: yes
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE)
+```
+
+## Background
+
+Nonlinear regression is an important modeling tool for looking at more compliated biological, physiological, etc., relationships. This introductory exercise describes some of the concepts that one should consider when analyzing nonlinear data. The process is iterative for modeling fitting, meaning that the parameters are estimated in a stepwise fashion. In Plant Pathology this is a useful tool for things like disease development over time. These models can be further extended to incorporated additional factors like treatments, years, among other things, to study the overall behavior and observed variability.
+
+```{r packages}
+
+# Note that for this example, we will keep the tools to those that are available in the base package
+
+library(tidyverse)
+
+```
+
+## Data
+
+This work originated in Costa Rica and focused on growth and development of onion in the northern areas of the Province of Cartago. Growth was measured using whole plant biomass. The goal was to understand how different varieties performed in this zone and future work would examine the impact of different management tactics and pests on improving overall productivity. 
+
+The data strcuture for the orginal worked involved three cultivars but for the exercise we will only focus on one of those, which is called Alvara. 
+
+* dap = days after planting 
+* gdd = growing degree days based on threshold temperatures for onion
+* root = root dry weight (grams)
+* buld = bulb dry weight (grams)
+* aerial = aerial biomass dry weight (grams) 
+* total = total dry weight considering the above measurements 
+
+```{r data}
+
+dap <- c(11, 18, 26, 33, 40, 47, 56, 61, 69, 82, 96, 111, 124)
+gdd <- c(148, 233, 327, 410, 492, 575, 686, 746, 837, 993, 1158, 1335, 1484)
+root <- c(0.04, 0.019, 0.113, 0.044, 0.045, 0.056, 0.08, 0.114, 0.109, 0.116, 0.098, 0.101, 0.066)
+bulb <- c(0.137, 0.166, 0.289, 0.2, 0.292, 0.298, 0.474, 0.416, 1.236, 2.594, 6.265, 6.174, 
+22.521)
+aerial <- c(0.162, 0.191, 0.308, 0.243, 0.25, 0.343, 0.988, 0.962, 2.593, 3.379, 2.83, 5.054,
+2.748)
+total <- c(0.34, 0.376, 0.711, 0.487, 0.587, 0.698, 1.542, 1.492, 3.938, 6.089, 9.193, 11.329,
+25.334)
+
+alvara <- data.frame(dap, gdd, root, bulb, aerial, total)
+
+```
+
+## Graphical representation - preliminary 
+
+Graphically, we will use some basic tools to look at the overall behavior.  
+
+```{r plots1}
+
+## The predictive factor is growing degree days, assuming that best explains the overall growth and development
+
+with(alvara, plot(x=gdd, y=root, type="b", lty=1, lwd=2, pch=19, col="black"))
+with(alvara, plot(x=gdd, y=bulb, type="b", lty=1, lwd=2, pch=19, col="black"))
+with(alvara, plot(x=gdd, y=aerial, type="b", lty=1, lwd=2, pch=19, col="black"))
+with(alvara, plot(x=gdd, y=total, type="b", lty=1, lwd=2, pch=19, col="black"))
+
+```
+
+## Modeling
+
+Selecting a nonlinear model depends on many factors especially taking into account the biological relationship. In preliminary analyses with data of this type for onion, we saw two possible nonlinear models that best describe the relationships. In the first case the development was bell-shaped, showing increases until a specific point in the developmental process when dry weight was reduced. The second curve tupe was exponential and related to the ultimate growth phases just prior to harvest. Even though growth is not infinite, we still recognize that this model may explain well the relationship and is interpretable. 
+
+Model 1. 
+
+$$ DW = \alpha * exp(-\beta * (gdd-\gamma)^2)$$
+
+Where, DW is the dry weight (g), $\alpha$ is the measure of initial dry weight the start of evaluations (0 gdds), $\beta$ is the growth rate, and $\gamma$ represents the inflexion point in the process. "gdd" are the accumulated growing degree days. 
+
+Model 2. 
+
+$$ DW = X_0 * exp (K * gdd) $$
+
+where, DW is the dry weight (g), $X_0$ is the condition where there has been no accumulation of heat units, and K is the growth rate as a function of the accumulated growing degree days (gdd).
+
+In both cases, it is important to take into account that the model will be adjusted based on the definition of the initial starting parameters. There are different methods to define initial starting parameters, including:
+
+* using a grid search approach to find the best combination of all parameters in the model 
+* using preliminary analyses to define the parameters (can be based on similar data to your situation)
+* functional estimate based on the model form and your knowledge about the system
+* genetic algorithms, see for example, https://en.wikipedia.org/wiki/Genetic_algorithm 
+* in R there are also for some of the models there are functions that will obtain initial starting parameters (see: http://www.apsnet.org/edcenter/advanced/topics/EcologyAndEpidemiologyInR/DiseaseProgress/Pages/NonlinearRegression.aspx)
+
+For the following examples, we will use the third method based on knowledge of the crop physiology and preliminary analyses.
+
+## Model 1
+
+```{r model1}
+
+## Variable = root dry weight
+## nls = nonlinear least squares
+## start=list() provides the input to define the initial starting values for the parameters
+
+regnl1 <- nls(root ~ alpha * exp(-beta*(gdd-gamma)^2), 
+              start=list(alpha = 0.15, beta = 0.0000002, gamma = 900), trace=TRUE, data=alvara)
+
+summary(regnl1)
+
+## Predictions
+
+regnl_pred <- predict(regnl1, data.frame(gdd=seq(100,1500,25)))
+
+## Database of predictions over a range of gdds
+
+predictions <- data.frame(gdd=seq(100,1500,25), pred=regnl_pred)
+
+## Graphically
+
+ej1 <- ggplot() 
+ej1 +
+  geom_point(data=alvara, aes(x=gdd, y=root)) +
+  geom_line(data=predictions, aes(x=gdd, y=pred), lty=1, lwd=1.5)
+               
+```
+
+## Model 2
+
+```{r model2}
+
+## Variable = total dry weight 
+
+regnl2 <- nls(total ~ x0 * exp(k * gdd), start = list(x0=0.5, k=0.0002), trace=TRUE, data=alvara)
+summary(regnl2)
+
+## Predictions
+
+regn2_pred <- predict(regnl2, data.frame(gdd=seq(100,1500,25)))
+
+## Database of predictions
+
+predictions <- data.frame(gdd=seq(100,1500,25), pred=regn2_pred)
+
+## Graphically
+
+ej2 <- ggplot() 
+ej2 +
+  geom_point(data=alvara, aes(x=gdd, y=total)) +
+  geom_line(data=predictions, aes(x=gdd, y=pred), lty=1, lwd=1.5)
+
+```
+
+## Exercises
+
+Perform the same set of the analyses for the following measurements and initial parameter conditions: 
+
+Aerial dry weight, you can consider the following starting parameter values: start=list(alpha = 5, beta = 0.00002, gamma = 1100).
+
+Bulb dry weight, you can consider the following starting parameter values: start=list(x0 = 0.5, k = 0.0002).
