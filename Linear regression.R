@@ -18,40 +18,40 @@ clean <- c(99.97, 99.94, 99.86, 99.98, 99.93, 99.81, 99.98, 99.91, 99.88,
            99.97, 99.97, 99.8, 99.96, 99.99, 99.86, 99.96, 99.93, 99.79, 99.96, 
            99.86, 99.82, 99.97, 99.99, 99.83, 99.89, 99.96, 99.72, 99.96, 99.91, 
            99.64, 99.98, 99.86, 99.66, 99.98)
-alfatoxin <- c(3, 18.8, 46.8, 4.7, 18.9, 46.8, 8.3, 21.7, 58.1, 9.3, 21.9, 62.3, 
+aflatoxin <- c(3, 18.8, 46.8, 4.7, 18.9, 46.8, 8.3, 21.7, 58.1, 9.3, 21.9, 62.3, 
                9.9, 22.8, 70.6, 11, 24.2, 71.1, 12.3, 25.8, 71.3, 12.5, 30.6, 83.2, 
                12.6, 36.2, 83.6, 15.9, 39.8, 99.5, 16.7, 44.3, 111.2, 18.8)
 
-peanut <- data.frame(clean, alfatoxin)
+peanut <- data.frame(clean, aflatoxin)
 head(peanut)
 
 ## Exploratory analysis
 
-mean(alfatoxin)
-sd(alfatoxin)
-sd(alfatoxin)/mean(alfatoxin)*100
+mean(aflatoxin)
+sd(aflatoxin)
+sd(aflatoxin)/mean(aflatoxin)*100
 
 mean(clean)
 sd(clean)
 sd(clean)/mean(clean)*100
 
-cor(clean, alfatoxin)
-rcorr(clean, alfatoxin)
+cor(clean, aflatoxin)
+rcorr(clean, aflatoxin)
 
 ## Linear regression
 
 # Visualizing the relationship
-with(peanut, plot(x=clean, y=alfatoxin, xlim=c(99.5,100), ylim=c(0,120), pch=10)) 
+with(peanut, plot(x=clean, y=aflatoxin, xlim=c(99.5,100), ylim=c(0,120), pch=10)) 
 
 # We will use lm() = linear model, to run the regression
 
-linreg <- with(peanut, lm(alfatoxin~clean)) #Format, Y <- X
+linreg <- with(peanut, lm(aflatoxin~clean)) #Format, Y <- X
 anova(linreg) #ANOVA table to see how the model fit looks
 summary(linreg) #Another way to see results of the model, with a few more details. 
 
 ### Example: let's say that we are interested in comparing the slope to a known value 
 ## of -220, which means that for every 1% change in the percentage of clean grain, 
-## the concentration of alfatoxin will be reduced by 220 ug per kg
+## the concentration of aflatoxin will be reduced by 220 ug per kg
 
 # First, we need to see and understand where the coefficients are located, 
 # especially the intercept and slope
